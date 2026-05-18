@@ -1,79 +1,72 @@
-# fnOS Pudidun PD1000 UPS 自动识别与修复方案
+# fnOS 不支持品牌 UPS 通用修复方案
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 ![fnOS](https://img.shields.io/badge/fnOS-Compatible-blue)
 ![NUT](https://img.shields.io/badge/NUT-UPS%20Driver-green)
 
-一个由 AI（Codex/Grok/Claude 等）辅助完成的**飞牛私有云 fnOS** 廉价 UPS 兼容方案，让官方不支持的 **Pudidun PD1000**（以及同类 0001:0000 设备）完美运行。
+一个由 AI 辅助完成的**飞牛私有云 fnOS** UPS 兼容方案，专注于解决官方**不支持品牌**的 UPS 设备问题（显示 0000、驱动失败等）。
 
 ## 项目背景
 
-家里电力不稳定，购买了性价比高的 Pudidun PD1000 UPS（带 USB 通讯口）。接入 fnOS 后发现：
+飞牛 fnOS 系统在连接第三方/廉价 UPS 时，经常遇到官方不支持的情况：
 
-- 飞牛 UPS 页面显示设备为 `0000`，无法选择和保存
-- NUT 驱动无法正常连接（`Device not supported!`）
-- 官方 nut-scanner 能扫描到，但缺少正确的 `subdriver` 和 `langid_fix`
+- UPS 页面显示设备 ID 为 `0000` 或未知，无法选择和保存
+- NUT 驱动报 `Device not supported!`
+- `nut-scanner` 能检测到 USB 设备，但缺少正确的 `subdriver`、`langid_fix` 等配置
 
-传统方案（探针模式）不够优雅，于是**让 AI 直接分析系统、诊断、生成配置和修复脚本**，最终实现了：
+本仓库提供**通用修复方案**，通过 AI 辅助诊断 NUT 配置，让大多数**能被系统识别**的 UPS 正常工作（显示品牌、型号、电量、剩余时间，支持界面设置关机延迟等）。
 
-- 飞牛界面正常显示品牌、型号、电量、剩余时间
-- 支持在界面修改关机延迟
-- 系统更新或保存 UPS 规则后**自动修复**配置（防止被覆盖）
-- 开机自愈
-
-本项目把整个过程提炼成**可复用的 AI Prompt + 完整修复流程**，方便其他小白用户直接复制给 AI 助手使用。
+**重要说明**：
+作者目前仅持有 fnOS 环境，未测试群晖 DSM、威联通 QNAP 等其他 NAS。但原理高度相似（均基于 NUT UPS 驱动）。只要 `lsusb` / `nut-scanner` 能识别 USB 设备，问题多半是驱动配置导致，通常可解决。其他 NAS 用户可自行参考或提交 PR 补充经验。
 
 ## 核心功能
 
-- **NUT 配置自动修复**（krauler 子驱动 + langid_fix）
+- **NUT 配置自动修复**（krauler 等子驱动 + langid_fix）
 - **开机自启动修复脚本**
-- **飞牛保存配置后 Path 监听自动修复**
-- **电池参数优化**（续航估算、电压范围）
-- **完全保留飞牛原生 UPS 事件回调**
+- **飞牛保存配置后自动修复**（Path 监听）
+- **电池参数优化**（续航估算等）
+- **保留原生 UPS 事件回调**
 
 ## 使用方法
 
-### 方式一：直接复制下面 Prompt 给 AI（推荐）
+### 方式一：直接复制 AI Prompt（推荐）
 
 ```text
-我的 fnOS 上 Pudidun PD1000 UPS 被识别成 0001:0000，需要按 nutdrv_qx + krauler 修复。
+我的 fnOS 上 [你的UPS品牌型号] 被识别成 [vendor:product]，需要按 nutdrv_qx + [合适子驱动] 修复。
 
-请按以下流程做：
-1. SSH 连接后先运行 lsusb、nut-scanner -U、upsc 1100231@localhost。
-2. 如果 /etc/nut/ups.conf 被飞牛覆盖，请补回 subdriver=krauler、langid_fix=0x0409、Pudidun PD1000 显示字段、电池电压估算和 runtime。
-3. 恢复 /etc/nut/upssched.conf 为飞牛原生 /usr/trim/bin/upssched_cmd.sh 回调，不要写自定义关机策略。
-4. 重启 nut-driver@1100231、nut-server、nut-monitor。
-5. 写入开机修复脚本 /usr/local/sbin/pd1000-boot-fix.sh。
-6. 写入 PathChanged=/etc/nut/ups.conf 和 PathChanged=/etc/nut/device.conf 的 systemd path 监听，飞牛保存 UPS 规则后自动修复。
-7. 如果要改成断电后 3 分钟关机，把 /etc/nut/device.conf 里的 power-policy.value 设置为 180。
-8. 最后模拟删除 subdriver/langid_fix，验证 20 秒内能自动修复，并确认 upsc 返回 OL。
+请按以下流程操作：
+1. SSH 登录后运行 lsusb、nut-scanner -U、upsc [设备名]@localhost 等诊断命令。
+2. 修复 /etc/nut/ups.conf，添加正确的 subdriver、langid_fix、显示名称、电池参数。
+3. 保持 /etc/nut/upssched.conf 使用飞牛原生回调。
+4. 重启相关 NUT 服务。
+5. 创建开机修复脚本和 systemd path 监听（监控 ups.conf 变化）。
+6. 根据需要设置关机延迟（如断电 3 分钟 = 180 秒）。
+7. 测试配置自动修复功能。
 ```
 
-把你的 SSH 信息、希望的关机时间等补充进去发给 AI 即可。
+补充你的具体 UPS 信息、SSH 细节、期望关机时间后发给 AI 即可。
 
-### 方式二：手动按帖子步骤操作
-
-详见仓库中的 `docs/详细修复流程.md`。
+### 方式二：手动操作
+详见 `docs/详细修复流程.md`。
 
 ## 文件结构
 
 ```
-fnOS-Pudidun-PD1000-UPS-Fix/
+fnOS-Unsupported-UPS-Fix/
 ├── README.md
 ├── docs/
 │   └── 详细修复流程.md
 ├── scripts/
-│   ├── pd1000-fix-ups-conf.py
-│   ├── pd1000-boot-fix.sh
-│   └── pd1000-fix-ups-conf.service
+│   ├── fix-ups-conf.py
+│   ├── boot-fix.sh
+│   └── fix-ups-conf.service
 └── LICENSE
 ```
 
 ## 贡献
-
-欢迎提交其他 UPS 型号的修复经验，一起完善廉价 UPS 在 fnOS 上的生态！
+欢迎 PR 其他 UPS 型号、其他 NAS（群晖、QNAP 等）的适配经验，一起完善！
 
 ## 致谢
-
 - 飞牛官方论坛
-- AI 大模型的强大分析能力
+- AI 大模型（Grok 等）的强大诊断能力
+- 所有尝试廉价 UPS 的 fnOS 用户
